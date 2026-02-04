@@ -93,9 +93,9 @@ const TerrariumCustomizer = () => {
                         className={`relative group flex flex-col items-center gap-2 sm:gap-3 transition-all duration-300 cursor-pointer ${selectedScene.id === scene.id ? 'scale-105' : 'opacity-60 hover:opacity-100 scale-100'
                             }`}
                     >
-                        <div className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border-2 transition-colors duration-300 ${selectedScene.id === scene.id
+                        <div className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border-2 transition-all duration-300 ${selectedScene.id === scene.id
                             ? 'border-emerald-500 shadow-2xl'
-                            : isDarkMode ? 'border-white/10 shadow-lg' : 'border-black/10 shadow-md'
+                            : isDarkMode ? 'border-white/10 shadow-lg' : 'border-black/20 shadow-md bg-white/50'
                             }`}>
                             <Image
                                 src={scene.image}
@@ -107,7 +107,7 @@ const TerrariumCustomizer = () => {
                         </div>
                         <span className={`text-xs sm:text-sm font-medium transition-colors ${selectedScene.id === scene.id
                             ? (isDarkMode ? 'text-emerald-400' : 'text-emerald-600')
-                            : (isDarkMode ? 'text-neutral-500' : 'text-neutral-400')
+                            : (isDarkMode ? 'text-neutral-500' : 'text-neutral-600')
                             }`}>
                             {scene.name}
                         </span>
