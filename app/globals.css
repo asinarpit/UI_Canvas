@@ -24,3 +24,87 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.border-dotted-spaced {
+  position: relative;
+  border: none;
+  background-image: 
+    linear-gradient(to right, rgb(82, 82, 82) 33%, transparent 33%),
+    linear-gradient(to right, rgb(82, 82, 82) 33%, transparent 33%),
+    linear-gradient(to bottom, rgb(82, 82, 82) 33%, transparent 33%),
+    linear-gradient(to bottom, rgb(82, 82, 82) 33%, transparent 33%);
+  background-size: 
+    12px 1px,
+    12px 1px,
+    1px 12px,
+    1px 12px;
+  background-position: 
+    0 0,
+    0 100%,
+    0 0,
+    100% 0;
+  background-repeat: 
+    repeat-x,
+    repeat-x,
+    repeat-y,
+    repeat-y;
+}
+
+/* Corner elements */
+.corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.corner::before,
+.corner::after {
+  content: '';
+  position: absolute;
+  background-color: rgb(120, 120, 120);
+}
+
+/* Horizontal bar */
+.corner::before {
+  width: 16px;
+  height: 2px;
+}
+
+/* Vertical bar */
+.corner::after {
+  width: 2px;
+  height: 16px;
+}
+
+/* Top-left corner */
+.corner-tl {
+  top: 0;
+  left: 0;
+}
+.corner-tl::before { top: 0; left: 0; }
+.corner-tl::after { top: 0; left: 0; }
+
+/* Top-right corner */
+.corner-tr {
+  top: 0;
+  right: 0;
+}
+.corner-tr::before { top: 0; right: 0; }
+.corner-tr::after { top: 0; right: 0; }
+
+/* Bottom-left corner */
+.corner-bl {
+  bottom: 0;
+  left: 0;
+}
+.corner-bl::before { bottom: 0; left: 0; }
+.corner-bl::after { bottom: 0; left: 0; }
+
+/* Bottom-right corner */
+.corner-br {
+  bottom: 0;
+  right: 0;
+}
+.corner-br::before { bottom: 0; right: 0; }
+.corner-br::after { bottom: 0; right: 0; }

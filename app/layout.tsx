@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Terrarium Button",
-  description: "A customizable, interactive terrarium button built with Framer Motion and Figma.",
+  title: "Arpit's Canvas",
+  description: "A personal showcase of creative UI components built with Framer Motion and Figma.",
 };
 
 export default function RootLayout({
