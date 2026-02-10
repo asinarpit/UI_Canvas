@@ -14,10 +14,11 @@ const ABDOMEN_RY = 11;
 const EYE_RADIUS = 1.8;
 
 // ── Magnetic behaviour ─────────────────────────────────────────
-const MAG_DOT_PULL_RADIUS = 50;
+const DOT_INTERACTION_RANGE = 60; // Increase this to make more dots react
+const MAG_DOT_PULL_RADIUS = DOT_INTERACTION_RANGE;
 const MAG_DOT_PULL_RADIUS_SQ = MAG_DOT_PULL_RADIUS * MAG_DOT_PULL_RADIUS;
 const MAG_DOT_PULL_STRENGTH = 8;
-const MAG_ARC_RADIUS = 35;
+const MAG_ARC_RADIUS = DOT_INTERACTION_RANGE * 0.7;
 const MAG_ARC_RADIUS_SQ = MAG_ARC_RADIUS * MAG_ARC_RADIUS;
 
 // ── Realistic gait ─────────────────────────────────────────────
@@ -26,9 +27,9 @@ const STEP_THRESHOLD_SQ = STEP_THRESHOLD * STEP_THRESHOLD;
 const STEP_TOO_CLOSE = BODY_RADIUS * 1.2;
 const STEP_TOO_CLOSE_SQ = STEP_TOO_CLOSE * STEP_TOO_CLOSE;
 const STEP_LIFT_HEIGHT = 18;
-const STEP_SPEED = 0.18;
+const STEP_SPEED = 0.25;
+const MAX_SPEED = 8.0;
 const GAIT_GROUP_A = new Set([0, 2, 5, 7]);
-const GAIT_GROUP_B = new Set([1, 3, 4, 6]);
 
 // ── Precomputed ────────────────────────────────────────────────
 const BODY_RADIUS_PLUS_5_SQ = (BODY_RADIUS + 5) ** 2;
@@ -38,19 +39,51 @@ const LEG_REACH_SQ = LEG_REACH * LEG_REACH;
 const TWO_PI = Math.PI * 2;
 const HALF_PI_OVER_2_5 = Math.PI / 2.5;
 
-// ── Neumorphic palette ─────────────────────────────────────────
-const NEU_BG = '#2a2a32';
-const NEU_LIGHT = '#35353f';
-const NEU_SHADOW = '#1e1e24';
-
-// ── Black widow colours ────────────────────────────────────────
-const BW_BLACK = '#0d0d0d';
-const BW_GLOSS = '#1a1a1a';
-const BW_SHEEN = '#2c2c2c';
-const BW_RED = '#c0392b';
-const BW_RED_BRIGHT = '#e74c3c';
-const BW_LEG = '#111111';
-const BW_LEG_HIGHLIGHT = '#292929';
+// ── Theme configuration ────────────────────────────────────────
+const THEME = {
+    dark: {
+        dotShadow: 'rgba(20, 20, 20, 0.4)',
+        dotHighlight: 'rgba(50, 50, 50, 0.2)',
+        dotCore: 'rgba(60, 60, 60, 0.3)',
+        neuLight: '#2a2a2a',
+        neuShadow: '#121212',
+        spiderBase: '#1a1a1a',
+        spiderGloss: '#222222',
+        spiderSheen: '#333333',
+        spiderAccent: '#555555',
+        spiderAccentBright: '#777777',
+        spiderLeg: '#1c1c1c',
+        spiderLegHighlight: '#2a2a2a',
+        jointShadow: 'rgba(0,0,0,0.3)',
+        bodyShadow: 'rgba(0,0,0,0.25)',
+        magneticArc: 'rgba(160,160,160,',
+        pulledDotCore: 'rgba(180,180,180,',
+        grabbedDotCore: 'rgba(160,160,160,0.3)',
+        activeDot: '#777777', // BW_RED_BRIGHT
+        eyeGlow: 'rgba(160,160,160,0.25)',
+    },
+    light: {
+        dotShadow: 'rgba(0, 0, 0, 0.06)',
+        dotHighlight: 'rgba(255, 255, 255, 0.9)',
+        dotCore: 'rgba(0, 0, 0, 0.1)',
+        neuLight: '#f0f0f0',
+        neuShadow: '#d1d9e6',
+        spiderBase: '#3d3d3d', // Less dark charcoal
+        spiderGloss: '#505050',
+        spiderSheen: '#707070',
+        spiderAccent: '#606060',
+        spiderAccentBright: '#888888',
+        spiderLeg: '#454545',
+        spiderLegHighlight: '#6d6d6d',
+        jointShadow: 'rgba(0,0,0,0.08)',
+        bodyShadow: 'rgba(0,0,0,0.1)',
+        magneticArc: 'rgba(100,100,100,',
+        pulledDotCore: 'rgba(140,140,140,',
+        grabbedDotCore: 'rgba(180,180,180,0.2)',
+        activeDot: '#666666',
+        eyeGlow: 'rgba(120,120,120,0.15)',
+    }
+};
 
 // Leg angle offsets RELATIVE to heading (radians)
 const LEG_ANGLE_OFFSETS = [
@@ -105,15 +138,16 @@ function findBestDotForLeg(
 }
 
 // ── Component ──────────────────────────────────────────────────
-export default function SpiderWeb() {
+export default function SpiderWeb({ isDarkMode = true }: { isDarkMode?: boolean }) {
+    const showGrid = true;
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [dims, setDims] = useState({ w: 0, h: 0 });
 
     const bodyX = useMotionValue(0);
     const bodyY = useMotionValue(0);
-    const springX = useSpring(bodyX, { stiffness: 120, damping: 25, mass: 0.8 });
-    const springY = useSpring(bodyY, { stiffness: 120, damping: 25, mass: 0.8 });
+    const springX = useSpring(bodyX, { stiffness: 250, damping: 25, mass: 0.8 });
+    const springY = useSpring(bodyY, { stiffness: 250, damping: 25, mass: 0.8 });
 
     const legsRef = useRef<LegState[]>([]);
     const mouseRef = useRef<Point>({ x: 0, y: 0 });
@@ -123,6 +157,7 @@ export default function SpiderWeb() {
     // Pre-allocate typed arrays for nearby dots (avoid GC)
     const nearbyXRef = useRef(new Float32Array(64));
     const nearbyYRef = useRef(new Float32Array(64));
+    const usedDotsRef = useRef(new Set<number>());
 
     // Cache the off-screen dot pattern as an ImageBitmap
     const dotPatternRef = useRef<ImageBitmap | null>(null);
@@ -150,8 +185,6 @@ export default function SpiderWeb() {
             const rect = el.getBoundingClientRect();
             mouseRef.current.x = clientX - rect.left;
             mouseRef.current.y = clientY - rect.top;
-            bodyX.set(mouseRef.current.x);
-            bodyY.set(mouseRef.current.y);
         };
 
         const onMouseMove = (e: MouseEvent) => {
@@ -182,7 +215,7 @@ export default function SpiderWeb() {
     }, [bodyX, bodyY]);
 
     // ── Pre-render static dot grid to offscreen canvas ─────────
-    const buildDotPattern = useCallback((w: number, h: number) => {
+    const buildDotPattern = useCallback((w: number, h: number, isDark: boolean) => {
         if (dotPatternDimsRef.current.w === w && dotPatternDimsRef.current.h === h && dotPatternRef.current) return;
         const offscreen = document.createElement('canvas');
         offscreen.width = w;
@@ -192,6 +225,11 @@ export default function SpiderWeb() {
 
         const cols = Math.floor(w / GRID_SPACING) + 1;
         const rows = Math.floor(h / GRID_SPACING) + 1;
+
+        // Theme-aware dot colors
+        const colors = isDark ? THEME.dark : THEME.light;
+        const { dotShadow, dotHighlight, dotCore } = colors;
+
         for (let c = 0; c < cols; c++) {
             for (let r = 0; r < rows; r++) {
                 const x = c * GRID_SPACING;
@@ -199,17 +237,17 @@ export default function SpiderWeb() {
                 // shadow side
                 octx.beginPath();
                 octx.arc(x + 0.6, y + 0.6, 2, 0, TWO_PI);
-                octx.fillStyle = 'rgba(15, 15, 20, 0.7)';
+                octx.fillStyle = dotShadow;
                 octx.fill();
                 // highlight side
                 octx.beginPath();
                 octx.arc(x - 0.3, y - 0.3, 1.8, 0, TWO_PI);
-                octx.fillStyle = 'rgba(65, 65, 75, 0.5)';
+                octx.fillStyle = dotHighlight;
                 octx.fill();
                 // core
                 octx.beginPath();
                 octx.arc(x, y, 1.5, 0, TWO_PI);
-                octx.fillStyle = 'rgba(80, 80, 92, 0.7)';
+                octx.fillStyle = dotCore;
                 octx.fill();
             }
         }
@@ -218,6 +256,12 @@ export default function SpiderWeb() {
             dotPatternDimsRef.current = { w, h };
         });
     }, []);
+
+    // Force re-render of pattern when theme changes
+    useEffect(() => {
+        dotPatternRef.current = null;
+        dotPatternDimsRef.current = { w: 0, h: 0 };
+    }, [isDarkMode]);
 
     // ── Main animation loop ────────────────────────────────────
     useEffect(() => {
@@ -228,7 +272,7 @@ export default function SpiderWeb() {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        buildDotPattern(dims.w, dims.h);
+        buildDotPattern(dims.w, dims.h, isDarkMode);
 
         const cx = dims.w / 2;
         const cy = dims.h / 2;
@@ -256,9 +300,27 @@ export default function SpiderWeb() {
         const feetY = new Float32Array(LEG_COUNT);
 
         const animate = () => {
+            const nowTime = Date.now();
+            const nowSec = nowTime * 0.001;
+
+            // ── Path Following: Move target towards mouse capped by MAX_SPEED ──
+            const curTX = bodyX.get();
+            const curTY = bodyY.get();
+            const mdx = mouseRef.current.x - curTX;
+            const mdy = mouseRef.current.y - curTY;
+            const mDistSq = mdx * mdx + mdy * mdy;
+
+            if (mDistSq > 1) {
+                const mDist = Math.sqrt(mDistSq);
+                const step = Math.min(mDist, MAX_SPEED);
+                bodyX.set(curTX + (mdx / mDist) * step);
+                bodyY.set(curTY + (mdy / mDist) * step);
+            }
+
             const bx = springX.get();
             const by = springY.get();
 
+            const colors = isDarkMode ? THEME.dark : THEME.light;
             const toMouse = Math.atan2(mouseRef.current.y - by, mouseRef.current.x - bx);
 
             // ── Collect nearby grid dots into typed arrays ──────
@@ -295,8 +357,8 @@ export default function SpiderWeb() {
                 }
             }
 
-            const usedDots = new Set<number>(); // indices into nearby arrays
-            const activeKeys = new Set<string>(); // for grid drawing (only active dots)
+            const usedDots = usedDotsRef.current;
+            usedDots.clear();
             const legs = legsRef.current;
 
             // ── Mark dots claimed by planted legs ──────────────
@@ -310,9 +372,17 @@ export default function SpiderWeb() {
                             break;
                         }
                     }
-                    activeKeys.add(leg.target.x + ',' + leg.target.y);
                 }
             }
+
+            // A dot is active if it's the target of any leg
+            const isDotActive = (tx: number, ty: number) => {
+                for (let i = 0; i < LEG_COUNT; i++) {
+                    const t = legs[i].target;
+                    if (t && t.x === tx && t.y === ty) return true;
+                }
+                return false;
+            };
 
             // ── Determine which legs need to step ──────────────
             const needsStepA: number[] = [];
@@ -343,7 +413,6 @@ export default function SpiderWeb() {
                         usedDots.add(idx);
                         const nx = nearbyX[idx];
                         const ny = nearbyY[idx];
-                        activeKeys.add(nx + ',' + ny);
                         leg.previous.x = leg.current.x;
                         leg.previous.y = leg.current.y;
                         leg.target = { x: nx, y: ny };
@@ -360,14 +429,6 @@ export default function SpiderWeb() {
             } else if (secondaryNeedsStep.length > 0) {
                 doSteps(secondaryNeedsStep);
                 gaitPhaseRef.current = gaitPhaseRef.current === 'A' ? 'B' : 'A';
-            }
-
-            // Mark stepping leg targets as active
-            for (let i = 0; i < LEG_COUNT; i++) {
-                const leg = legs[i];
-                if (leg.target && leg.stepping) {
-                    activeKeys.add(leg.target.x + ',' + leg.target.y);
-                }
             }
 
             // ── Animate legs ───────────────────────────────────
@@ -404,199 +465,274 @@ export default function SpiderWeb() {
             // ── DRAW ───────────────────────────────────────────
             ctx.clearRect(0, 0, dims.w, dims.h);
 
-            // 1) Blit pre-rendered dot pattern (single drawImage — very fast)
-            if (dotPatternRef.current) {
+            // 1) Blit pre-rendered dot pattern
+            if (showGrid && dotPatternRef.current) {
                 ctx.drawImage(dotPatternRef.current, 0, 0);
             }
 
-            // 2) Only overdraw active/pulled dots (few, not hundreds)
-            const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.005);
-            const cols = Math.floor(dims.w / GRID_SPACING) + 1;
-            const rows = Math.floor(dims.h / GRID_SPACING) + 1;
+            if (showGrid) {
+                // 2) Overdraw active/pulled dots
+                const pulse = 0.5 + 0.5 * Math.sin(nowTime * 0.005);
+                const cols = Math.floor(dims.w / GRID_SPACING) + 1;
+                const rows = Math.floor(dims.h / GRID_SPACING) + 1;
 
-            // Only check dots near feet for magnetic pull (skip far dots)
-            const pullCheckRange = MAG_DOT_PULL_RADIUS + GRID_SPACING;
-            for (let fi = 0; fi < feetCount; fi++) {
-                const fx = feetX[fi];
-                const fy = feetY[fi];
-                const cMin = Math.max(0, Math.floor((fx - pullCheckRange) / GRID_SPACING));
-                const cMax = Math.min(cols - 1, Math.ceil((fx + pullCheckRange) / GRID_SPACING));
-                const rMin = Math.max(0, Math.floor((fy - pullCheckRange) / GRID_SPACING));
-                const rMax = Math.min(rows - 1, Math.ceil((fy + pullCheckRange) / GRID_SPACING));
+                // Only check dots near feet for magnetic pull (skip far dots)
+                const pullCheckRange = MAG_DOT_PULL_RADIUS + GRID_SPACING;
+                for (let fi = 0; fi < feetCount; fi++) {
+                    const fx = feetX[fi];
+                    const fy = feetY[fi];
+                    const cMin = Math.max(0, Math.floor((fx - pullCheckRange) / GRID_SPACING));
+                    const cMax = Math.min(cols - 1, Math.ceil((fx + pullCheckRange) / GRID_SPACING));
+                    const rMin = Math.max(0, Math.floor((fy - pullCheckRange) / GRID_SPACING));
+                    const rMax = Math.min(rows - 1, Math.ceil((fy + pullCheckRange) / GRID_SPACING));
 
-                for (let c = cMin; c <= cMax; c++) {
-                    for (let r = rMin; r <= rMax; r++) {
-                        const ox = c * GRID_SPACING;
-                        const oy = r * GRID_SPACING;
-                        const key = ox + ',' + oy;
-                        if (activeKeys.has(key)) continue; // drawn separately below
+                    for (let c = cMin; c <= cMax; c++) {
+                        for (let r = rMin; r <= rMax; r++) {
+                            const ox = c * GRID_SPACING;
+                            const oy = r * GRID_SPACING;
 
-                        const fdSq = distSq(ox, oy, fx, fy);
-                        if (fdSq < MAG_DOT_PULL_RADIUS_SQ && fdSq > 1) {
-                            const fd = Math.sqrt(fdSq);
-                            const t = 1 - fd / MAG_DOT_PULL_RADIUS;
-                            const pull = t * t * MAG_DOT_PULL_STRENGTH;
-                            const px = ox + ((fx - ox) / fd) * pull;
-                            const py = oy + ((fy - oy) / fd) * pull;
+                            if (isDotActive(ox, oy)) continue;
 
-                            // Clear original dot area and draw displaced
-                            ctx.clearRect(ox - 3, oy - 3, 6, 6);
-                            const sz = 2 + t * 2;
-                            ctx.beginPath();
-                            ctx.arc(px + 0.8, py + 0.8, sz, 0, TWO_PI);
-                            ctx.fillStyle = NEU_SHADOW;
-                            ctx.fill();
-                            ctx.beginPath();
-                            ctx.arc(px - 0.4, py - 0.4, sz - 0.5, 0, TWO_PI);
-                            ctx.fillStyle = NEU_LIGHT;
-                            ctx.fill();
-                            ctx.beginPath();
-                            ctx.arc(px, py, sz - 1, 0, TWO_PI);
-                            ctx.fillStyle = `rgba(231,76,60,${(0.2 + t * 0.4).toFixed(2)})`;
-                            ctx.fill();
+                            const fdSq = distSq(ox, oy, fx, fy);
+                            if (fdSq < MAG_DOT_PULL_RADIUS_SQ && fdSq > 1) {
+                                const fd = Math.sqrt(fdSq);
+                                const t = 1 - fd / MAG_DOT_PULL_RADIUS;
+                                const pull = t * t * MAG_DOT_PULL_STRENGTH;
+                                const px = ox + ((fx - ox) / fd) * pull;
+                                const py = oy + ((fy - oy) / fd) * pull;
+
+                                const sz = 2 + t * 2;
+                                ctx.beginPath();
+                                ctx.arc(px + 0.8, py + 0.8, sz, 0, TWO_PI);
+                                ctx.fillStyle = colors.neuShadow;
+                                ctx.fill();
+                                ctx.beginPath();
+                                ctx.arc(px - 0.4, py - 0.4, sz - 0.5, 0, TWO_PI);
+                                ctx.fillStyle = colors.neuLight;
+                                ctx.fill();
+                                ctx.beginPath();
+                                ctx.arc(px, py, sz - 1, 0, TWO_PI);
+                                // Optimization: avoid template literals and toFixed if possible
+                                ctx.fillStyle = colors.pulledDotCore + (0.2 + t * 0.4) + ')';
+                                ctx.fill();
+                            }
                         }
                     }
                 }
-            }
 
-            // Draw active (grabbed) dots
-            for (const key of activeKeys) {
-                const sep = key.indexOf(',');
-                const ax = +key.slice(0, sep);
-                const ay = +key.slice(sep + 1);
-                // Clear underlying dot
-                ctx.clearRect(ax - 3, ay - 3, 6, 6);
-                // Neumorphic grabbed
-                ctx.beginPath();
-                ctx.arc(ax + 1, ay + 1, 6, 0, TWO_PI);
-                ctx.fillStyle = NEU_SHADOW;
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(ax - 0.5, ay - 0.5, 5, 0, TWO_PI);
-                ctx.fillStyle = NEU_LIGHT;
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(ax, ay, 3.5 + pulse, 0, TWO_PI);
-                ctx.fillStyle = `rgba(192,57,43,${(0.25 + pulse * 0.15).toFixed(2)})`;
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(ax, ay, 2.5, 0, TWO_PI);
-                ctx.fillStyle = BW_RED_BRIGHT;
-                ctx.fill();
-            }
-
-            // 3) Magnetic arcs — only draw a few per foot
-            const now = Date.now() * 0.001;
-            for (let fi = 0; fi < feetCount; fi++) {
-                const fx = feetX[fi];
-                const fy = feetY[fi];
-                let arcCount = 0;
-                for (let j = 0; j < dotCount && arcCount < 3; j++) {
-                    const dx = nearbyX[j] - fx;
-                    const dy = nearbyY[j] - fy;
-                    const fdSq = dx * dx + dy * dy;
-                    if (fdSq < MAG_ARC_RADIUS_SQ && fdSq > 16) {
-                        const nk = nearbyX[j] + ',' + nearbyY[j];
-                        if (activeKeys.has(nk)) continue;
-                        const fd = Math.sqrt(fdSq);
-                        const t = 1 - fd / MAG_ARC_RADIUS;
-                        const flicker = 0.4 + 0.6 * Math.abs(Math.sin(now * 8 + fd));
+                // Draw active (grabbed) dots - iterate over legs instead of activeKeys set
+                for (let i = 0; i < LEG_COUNT; i++) {
+                    const leg = legs[i];
+                    if (leg.target) {
+                        const ax = leg.target.x;
+                        const ay = leg.target.y;
+                        // Neumorphic grabbed
                         ctx.beginPath();
-                        ctx.moveTo(fx, fy);
-                        const mx = (fx + nearbyX[j]) * 0.5 + Math.sin(now * 5 + fd) * 5 * t;
-                        const my = (fy + nearbyY[j]) * 0.5 + Math.cos(now * 5 + fd) * 5 * t;
-                        ctx.quadraticCurveTo(mx, my, nearbyX[j], nearbyY[j]);
-                        ctx.strokeStyle = `rgba(192,57,43,${(t * 0.2 * flicker).toFixed(3)})`;
-                        ctx.lineWidth = 0.5 + t * 0.5;
-                        ctx.stroke();
-                        arcCount++;
+                        ctx.arc(ax + 1, ay + 1, 6, 0, TWO_PI);
+                        ctx.fillStyle = colors.neuShadow;
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(ax - 0.5, ay - 0.5, 5, 0, TWO_PI);
+                        ctx.fillStyle = colors.neuLight;
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(ax, ay, 4, 0, TWO_PI);
+                        ctx.fillStyle = colors.grabbedDotCore;
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(ax, ay, 2.5, 0, TWO_PI);
+                        ctx.fillStyle = colors.activeDot;
+                        ctx.fill();
                     }
                 }
-            }
+
+                // 3) Magnetic arcs — only draw a few per foot
+                for (let fi = 0; fi < feetCount; fi++) {
+                    const fx = feetX[fi];
+                    const fy = feetY[fi];
+                    let arcCount = 0;
+                    for (let j = 0; j < dotCount && arcCount < 3; j++) {
+                        const dx = nearbyX[j] - fx;
+                        const dy = nearbyY[j] - fy;
+                        const fdSq = dx * dx + dy * dy;
+                        if (fdSq < MAG_ARC_RADIUS_SQ && fdSq > 16) {
+                            if (isDotActive(nearbyX[j], nearbyY[j])) continue;
+                            const fd = Math.sqrt(fdSq);
+                            const t = 1 - fd / MAG_ARC_RADIUS;
+                            const flicker = 0.4 + 0.6 * Math.abs(Math.sin(nowSec * 8 + fd));
+                            ctx.beginPath();
+                            ctx.moveTo(fx, fy);
+                            const mx = (fx + nearbyX[j]) * 0.5 + Math.sin(nowSec * 5 + fd) * 5 * t;
+                            const my = (fy + nearbyY[j]) * 0.5 + Math.cos(nowSec * 5 + fd) * 5 * t;
+                            ctx.quadraticCurveTo(mx, my, nearbyX[j], nearbyY[j]);
+                            ctx.strokeStyle = colors.magneticArc + (t * 0.2 * flicker) + ')';
+                            ctx.lineWidth = 0.5 + t * 0.5;
+                            ctx.stroke();
+                            arcCount++;
+                        }
+                    }
+                }
+            } // end showGrid
+
 
             // 4) Draw legs ──────────────────────────────────────
+
+            // Batch femur segments
+            ctx.lineCap = 'round';
+
+            // Shadows
+            ctx.beginPath();
+            ctx.strokeStyle = colors.bodyShadow;
+            ctx.lineWidth = 3;
             for (let i = 0; i < LEG_COUNT; i++) {
                 const leg = legs[i];
-                const fx = leg.current.x;
-                const fy = leg.current.y;
+                const fx = leg.current.x, fy = leg.current.y;
+                const dSq = distSq(fx, fy, bx, by);
+                if (dSq < BODY_RADIUS_PLUS_2_SQ) continue;
+                const dx = fx - bx, dy = fy - by;
+                const len = Math.sqrt(dSq);
+                const perpX = -dy / len, perpY = dx / len;
+                const side = i < 4 ? -1 : 1;
+                const kx = bx + dx * 0.38 + perpX * (len * 0.45) * side;
+                const ky = by + dy * 0.38 + perpY * (len * 0.45) * side;
+                ctx.moveTo(bx + 1, by + 1);
+                ctx.lineTo(kx + 1, ky + 1);
+            }
+            ctx.stroke();
+
+            // Main femur
+            ctx.beginPath();
+            ctx.strokeStyle = colors.spiderLeg;
+            ctx.lineWidth = 2.2;
+            for (let i = 0; i < LEG_COUNT; i++) {
+                const leg = legs[i];
+                const fx = leg.current.x, fy = leg.current.y;
+                const dSq = distSq(fx, fy, bx, by);
+                if (dSq < BODY_RADIUS_PLUS_2_SQ) continue;
+                const dx = fx - bx, dy = fy - by;
+                const len = Math.sqrt(dSq);
+                const perpX = -dy / len, perpY = dx / len;
+                const side = i < 4 ? -1 : 1;
+                const kx = bx + dx * 0.38 + perpX * (len * 0.45) * side;
+                const ky = by + dy * 0.38 + perpY * (len * 0.45) * side;
+                ctx.moveTo(bx, by);
+                ctx.lineTo(kx, ky);
+            }
+            ctx.stroke();
+
+            // Femur highlights
+            ctx.beginPath();
+            ctx.strokeStyle = colors.spiderLegHighlight;
+            ctx.lineWidth = 0.7;
+            for (let i = 0; i < LEG_COUNT; i++) {
+                const leg = legs[i];
+                const fx = leg.current.x, fy = leg.current.y;
+                const dSq = distSq(fx, fy, bx, by);
+                if (dSq < BODY_RADIUS_PLUS_2_SQ) continue;
+                const dx = fx - bx, dy = fy - by;
+                const len = Math.sqrt(dSq);
+                const perpX = -dy / len, perpY = dx / len;
+                const side = i < 4 ? -1 : 1;
+                const kx = bx + dx * 0.38 + perpX * (len * 0.45) * side;
+                const ky = by + dy * 0.38 + perpY * (len * 0.45) * side;
+                ctx.moveTo(bx - 0.4, by - 0.4);
+                ctx.lineTo(kx - 0.4, ky - 0.4);
+            }
+            ctx.stroke();
+
+            // Tibia Shadows
+            ctx.beginPath();
+            ctx.strokeStyle = colors.jointShadow;
+            ctx.lineWidth = 2.2;
+            for (let i = 0; i < LEG_COUNT; i++) {
+                const leg = legs[i];
+                const fx = leg.current.x, fy = leg.current.y;
+                const dSq = distSq(fx, fy, bx, by);
+                if (dSq < BODY_RADIUS_PLUS_2_SQ) continue;
+                const dx = fx - bx, dy = fy - by;
+                const len = Math.sqrt(dSq);
+                const perpX = -dy / len, perpY = dx / len;
+                const side = i < 4 ? -1 : 1;
+                const kx = bx + dx * 0.38 + perpX * (len * 0.45) * side;
+                const ky = by + dy * 0.38 + perpY * (len * 0.45) * side;
+                ctx.moveTo(kx + 1, ky + 1);
+                ctx.lineTo(fx + 1, fy + 1);
+            }
+            ctx.stroke();
+
+            // Tibia Main
+            ctx.beginPath();
+            ctx.strokeStyle = colors.spiderLeg;
+            ctx.lineWidth = 1.5;
+            for (let i = 0; i < LEG_COUNT; i++) {
+                const leg = legs[i];
+                const fx = leg.current.x, fy = leg.current.y;
+                const dSq = distSq(fx, fy, bx, by);
+                if (dSq < BODY_RADIUS_PLUS_2_SQ) continue;
+                const dx = fx - bx, dy = fy - by;
+                const len = Math.sqrt(dSq);
+                const perpX = -dy / len, perpY = dx / len;
+                const side = i < 4 ? -1 : 1;
+                const kx = bx + dx * 0.38 + perpX * (len * 0.45) * side;
+                const ky = by + dy * 0.38 + perpY * (len * 0.45) * side;
+                ctx.moveTo(kx, ky);
+                ctx.lineTo(fx, fy);
+            }
+            ctx.stroke();
+
+            // Tibia Highlights
+            ctx.beginPath();
+            ctx.strokeStyle = colors.spiderLegHighlight;
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < LEG_COUNT; i++) {
+                const leg = legs[i];
+                const fx = leg.current.x, fy = leg.current.y;
+                const dSq = distSq(fx, fy, bx, by);
+                if (dSq < BODY_RADIUS_PLUS_2_SQ) continue;
+                const dx = fx - bx, dy = fy - by;
+                const len = Math.sqrt(dSq);
+                const perpX = -dy / len, perpY = dx / len;
+                const side = i < 4 ? -1 : 1;
+                const kx = bx + dx * 0.38 + perpX * (len * 0.45) * side;
+                const ky = by + dy * 0.38 + perpY * (len * 0.45) * side;
+                ctx.moveTo(kx - 0.3, ky - 0.3);
+                ctx.lineTo(fx - 0.3, fy - 0.3);
+            }
+            ctx.stroke();
+
+            // Joints and Feet (less critical to batch but good for consistency)
+            for (let i = 0; i < LEG_COUNT; i++) {
+                const leg = legs[i];
+                const fx = leg.current.x, fy = leg.current.y;
                 const dSq = distSq(fx, fy, bx, by);
                 if (dSq < BODY_RADIUS_PLUS_2_SQ) continue;
 
-                const dx = fx - bx;
-                const dy = fy - by;
+                const dx = fx - bx, dy = fy - by;
                 const len = Math.sqrt(dSq);
-                if (len < 1) continue;
-
-                const perpX = -dy / len;
-                const perpY = dx / len;
+                const perpX = -dy / len, perpY = dx / len;
                 const side = i < 4 ? -1 : 1;
-
-                const kneeLift = len * 0.45;
-                const kx = bx + dx * 0.38 + perpX * kneeLift * side;
-                const ky = by + dy * 0.38 + perpY * kneeLift * side;
-
-                // Femur shadow + main + highlight (batched)
-                ctx.beginPath();
-                ctx.moveTo(bx + 1, by + 1);
-                ctx.lineTo(kx + 1, ky + 1);
-                ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-                ctx.lineWidth = 3;
-                ctx.stroke();
-
-                ctx.beginPath();
-                ctx.moveTo(bx, by);
-                ctx.lineTo(kx, ky);
-                ctx.strokeStyle = BW_LEG;
-                ctx.lineWidth = 2.2;
-                ctx.stroke();
-
-                ctx.beginPath();
-                ctx.moveTo(bx - 0.4, by - 0.4);
-                ctx.lineTo(kx - 0.4, ky - 0.4);
-                ctx.strokeStyle = BW_LEG_HIGHLIGHT;
-                ctx.lineWidth = 0.7;
-                ctx.stroke();
-
-                // Tibia shadow + main + highlight
-                ctx.beginPath();
-                ctx.moveTo(kx + 1, ky + 1);
-                ctx.lineTo(fx + 1, fy + 1);
-                ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-                ctx.lineWidth = 2.2;
-                ctx.stroke();
-
-                ctx.beginPath();
-                ctx.moveTo(kx, ky);
-                ctx.lineTo(fx, fy);
-                ctx.strokeStyle = BW_LEG;
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-
-                ctx.beginPath();
-                ctx.moveTo(kx - 0.3, ky - 0.3);
-                ctx.lineTo(fx - 0.3, fy - 0.3);
-                ctx.strokeStyle = BW_LEG_HIGHLIGHT;
-                ctx.lineWidth = 0.5;
-                ctx.stroke();
+                const kx = bx + dx * 0.38 + perpX * (len * 0.45) * side;
+                const ky = by + dy * 0.38 + perpY * (len * 0.45) * side;
 
                 // Knee joint
                 ctx.beginPath();
                 ctx.arc(kx + 0.5, ky + 0.5, 2.8, 0, TWO_PI);
-                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillStyle = colors.jointShadow;
                 ctx.fill();
                 ctx.beginPath();
                 ctx.arc(kx, ky, 2.2, 0, TWO_PI);
-                ctx.fillStyle = BW_SHEEN;
+                ctx.fillStyle = colors.spiderSheen;
                 ctx.fill();
 
                 // Foot tip
                 ctx.beginPath();
                 ctx.arc(fx, fy, 1.2, 0, TWO_PI);
-                ctx.fillStyle = leg.planted ? BW_RED : BW_SHEEN;
+                ctx.fillStyle = leg.planted ? colors.spiderAccent : colors.spiderSheen;
                 ctx.fill();
             }
 
             // 5) Spider body ────────────────────────────────────
+            const nowPulse = Math.sin(nowTime * 0.005);
             const cosM = Math.cos(toMouse);
             const sinM = Math.sin(toMouse);
 
@@ -606,19 +742,19 @@ export default function SpiderWeb() {
 
             ctx.beginPath();
             ctx.ellipse(abdomenX + 2, abdomenY + 2, ABDOMEN_RX + 2, ABDOMEN_RY + 1, toMouse + Math.PI, 0, TWO_PI);
-            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillStyle = colors.bodyShadow;
             ctx.fill();
 
             const abdGrad = ctx.createRadialGradient(abdomenX - 3, abdomenY - 3, 1, abdomenX, abdomenY, ABDOMEN_RX);
-            abdGrad.addColorStop(0, BW_SHEEN);
-            abdGrad.addColorStop(0.3, BW_GLOSS);
-            abdGrad.addColorStop(1, BW_BLACK);
+            abdGrad.addColorStop(0, colors.spiderSheen);
+            abdGrad.addColorStop(0.3, colors.spiderGloss);
+            abdGrad.addColorStop(1, colors.spiderBase);
             ctx.beginPath();
             ctx.ellipse(abdomenX, abdomenY, ABDOMEN_RX, ABDOMEN_RY, toMouse + Math.PI, 0, TWO_PI);
             ctx.fillStyle = abdGrad;
             ctx.fill();
 
-            // Hourglass
+            // Hourglass (keeping it subtle red)
             const hgAngle = toMouse + Math.PI;
             const perpHgX = -Math.sin(hgAngle);
             const perpHgY = Math.cos(hgAngle);
@@ -627,8 +763,8 @@ export default function SpiderWeb() {
             const hgSize = 5;
 
             const hgGlow = ctx.createRadialGradient(abdomenX, abdomenY, 0, abdomenX, abdomenY, hgSize + 3);
-            hgGlow.addColorStop(0, 'rgba(231,76,60,0.3)');
-            hgGlow.addColorStop(1, 'rgba(231,76,60,0)');
+            hgGlow.addColorStop(0, 'rgba(255, 30, 30, 0.3)');
+            hgGlow.addColorStop(1, 'rgba(255, 30, 30, 0)');
             ctx.beginPath();
             ctx.arc(abdomenX, abdomenY, hgSize + 3, 0, TWO_PI);
             ctx.fillStyle = hgGlow;
@@ -639,7 +775,7 @@ export default function SpiderWeb() {
             ctx.lineTo(abdomenX + dirHgX * hgSize + perpHgX * hgSize * 0.6, abdomenY + dirHgY * hgSize + perpHgY * hgSize * 0.6);
             ctx.lineTo(abdomenX + dirHgX * hgSize - perpHgX * hgSize * 0.6, abdomenY + dirHgY * hgSize - perpHgY * hgSize * 0.6);
             ctx.closePath();
-            ctx.fillStyle = BW_RED;
+            ctx.fillStyle = isDarkMode ? '#ff1e1e' : '#cc2222';
             ctx.fill();
 
             ctx.beginPath();
@@ -647,7 +783,7 @@ export default function SpiderWeb() {
             ctx.lineTo(abdomenX - dirHgX * hgSize + perpHgX * hgSize * 0.6, abdomenY - dirHgY * hgSize + perpHgY * hgSize * 0.6);
             ctx.lineTo(abdomenX - dirHgX * hgSize - perpHgX * hgSize * 0.6, abdomenY - dirHgY * hgSize - perpHgY * hgSize * 0.6);
             ctx.closePath();
-            ctx.fillStyle = BW_RED;
+            ctx.fillStyle = isDarkMode ? '#ff1e1e' : '#cc2222';
             ctx.fill();
 
             // Abdomen highlight
@@ -657,19 +793,19 @@ export default function SpiderWeb() {
                 abdomenY - Math.sin(hgAngle) * 3 + cosM * 3,
                 ABDOMEN_RX * 0.45, ABDOMEN_RY * 0.3, hgAngle, 0, TWO_PI
             );
-            ctx.fillStyle = 'rgba(60,60,60,0.35)';
+            ctx.fillStyle = 'rgba(120,120,120,0.2)';
             ctx.fill();
 
             // Cephalothorax
             ctx.beginPath();
             ctx.arc(bx + 1.5, by + 1.5, BODY_RADIUS + 1, 0, TWO_PI);
-            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillStyle = colors.bodyShadow;
             ctx.fill();
 
             const bodyGrad = ctx.createRadialGradient(bx - 2, by - 2, 1, bx, by, BODY_RADIUS);
-            bodyGrad.addColorStop(0, BW_SHEEN);
-            bodyGrad.addColorStop(0.4, BW_GLOSS);
-            bodyGrad.addColorStop(1, BW_BLACK);
+            bodyGrad.addColorStop(0, colors.spiderSheen);
+            bodyGrad.addColorStop(0.4, colors.spiderGloss);
+            bodyGrad.addColorStop(1, colors.spiderBase);
             ctx.beginPath();
             ctx.arc(bx, by, BODY_RADIUS, 0, TWO_PI);
             ctx.fillStyle = bodyGrad;
@@ -681,13 +817,13 @@ export default function SpiderWeb() {
 
             ctx.beginPath();
             ctx.arc(headX + 1, headY + 1, HEAD_RADIUS + 0.5, 0, TWO_PI);
-            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            ctx.fillStyle = colors.bodyShadow;
             ctx.fill();
 
             const headGrad = ctx.createRadialGradient(headX - 1, headY - 1, 0, headX, headY, HEAD_RADIUS);
-            headGrad.addColorStop(0, BW_SHEEN);
-            headGrad.addColorStop(0.5, BW_GLOSS);
-            headGrad.addColorStop(1, BW_BLACK);
+            headGrad.addColorStop(0, colors.spiderSheen);
+            headGrad.addColorStop(0.5, colors.spiderGloss);
+            headGrad.addColorStop(1, colors.spiderBase);
             ctx.beginPath();
             ctx.arc(headX, headY, HEAD_RADIUS, 0, TWO_PI);
             ctx.fillStyle = headGrad;
@@ -704,15 +840,15 @@ export default function SpiderWeb() {
                 const ey = headY + sinM * eyeForward + perpEyeY * s;
                 ctx.beginPath();
                 ctx.arc(ex, ey, EYE_RADIUS + 1.5, 0, TWO_PI);
-                ctx.fillStyle = 'rgba(192,57,43,0.25)';
+                ctx.fillStyle = colors.eyeGlow;
                 ctx.fill();
                 ctx.beginPath();
                 ctx.arc(ex, ey, EYE_RADIUS, 0, TWO_PI);
-                ctx.fillStyle = BW_RED_BRIGHT;
+                ctx.fillStyle = isDarkMode ? colors.spiderAccentBright : colors.spiderAccent;
                 ctx.fill();
                 ctx.beginPath();
                 ctx.arc(ex - 0.4, ey - 0.4, 0.6, 0, TWO_PI);
-                ctx.fillStyle = '#fff';
+                ctx.fillStyle = isDarkMode ? '#fff' : 'rgba(255,255,255,0.8)';
                 ctx.fill();
             }
 
@@ -721,7 +857,7 @@ export default function SpiderWeb() {
                 const ey = headY + sinM * (eyeForward + 1.5) + perpEyeY * s * 0.5;
                 ctx.beginPath();
                 ctx.arc(ex, ey, 1.2, 0, TWO_PI);
-                ctx.fillStyle = BW_RED;
+                ctx.fillStyle = colors.spiderAccent;
                 ctx.fill();
             }
 
@@ -734,19 +870,19 @@ export default function SpiderWeb() {
                 ctx.beginPath();
                 ctx.moveTo(fbx, fby);
                 ctx.lineTo(ftx, fty);
-                ctx.strokeStyle = BW_SHEEN;
+                ctx.strokeStyle = colors.spiderSheen;
                 ctx.lineWidth = 1.2;
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(ftx, fty, 0.8, 0, TWO_PI);
-                ctx.fillStyle = BW_RED;
+                ctx.fillStyle = colors.spiderAccent;
                 ctx.fill();
             }
 
             // Body glow
             const glowGrad = ctx.createRadialGradient(bx, by, 0, bx, by, 40);
-            glowGrad.addColorStop(0, 'rgba(192,57,43,0.04)');
-            glowGrad.addColorStop(1, 'rgba(192,57,43,0)');
+            glowGrad.addColorStop(0, isDarkMode ? 'rgba(160,160,160,0.04)' : 'rgba(0,0,0,0.02)');
+            glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.beginPath();
             ctx.arc(bx, by, 40, 0, TWO_PI);
             ctx.fillStyle = glowGrad;
@@ -757,14 +893,14 @@ export default function SpiderWeb() {
 
         animFrameRef.current = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(animFrameRef.current);
-    }, [dims, springX, springY, buildDotPattern, bodyX, bodyY]);
+    }, [dims, springX, springY, buildDotPattern, bodyX, bodyY, isDarkMode]);
 
     return (
         <div
             ref={containerRef}
             className="relative w-full h-full min-h-[400px] overflow-hidden cursor-none"
             style={{
-                background: NEU_BG,
+                background: 'transparent',
             }}
         >
             <canvas
@@ -775,15 +911,7 @@ export default function SpiderWeb() {
                 style={{ width: '100%', height: '100%' }}
             />
 
-            {/* Silk thread from top */}
-            <motion.div
-                className="absolute top-0 w-px"
-                style={{
-                    left: springX,
-                    height: springY,
-                    background: 'linear-gradient(to bottom, rgba(40,40,48,0.6), rgba(40,40,48,0.05))',
-                }}
-            />
+
         </div>
     );
 }

@@ -22,7 +22,7 @@ export default function Home() {
     },
     {
       id: 3,
-      component: <SpiderWeb />
+      component: <SpiderWeb isDarkMode={isDarkMode} />
     }
   ];
 
