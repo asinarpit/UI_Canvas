@@ -4,6 +4,7 @@ import { useState } from 'react';
 import GalaxyButton from "@/components/GalaxyButton";
 import TerrariumCustomizer from "@/components/TerrariumCustomizer";
 import ControlsBar from "@/components/ControlsBar";
+import SpiderWeb from "@/components/SpiderWeb";
 import { Heart } from 'lucide-react';
 
 export default function Home() {
@@ -18,6 +19,10 @@ export default function Home() {
     {
       id: 2,
       component: <GalaxyButton soundEnabled={soundEnabled} />
+    },
+    {
+      id: 3,
+      component: <SpiderWeb />
     }
   ];
 
@@ -32,7 +37,7 @@ export default function Home() {
 
       {
         components.map(item => (
-          <div key={item.id} className="border-dotted-spaced h-full relative">
+          <div key={item.id} className="border-dotted-spaced h-full relative overflow-hidden">
             <span className="corner corner-tl"></span>
             <span className="corner corner-tr"></span>
             <span className="corner corner-bl"></span>
